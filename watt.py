@@ -1,0 +1,162 @@
+import robin_stocks as rs
+import pyotp
+import math
+import calendar
+import os
+from datetime import datetime, timedelta, date
+
+#set to True to only output what would have been done, but not actually go through with any trades.
+dry_run = True
+
+#keep this variable the same as (or less than) the amount you are automatically transfering from bank to robinhood each period
+amount_per_period = 40
+stock_symbol = "WATT"
+
+#login to robinhood, only need to to totp once it seems
+#totp = pyotp.TOTP(os.environ.get('TOTP')).now()
+login = rs.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
+
+#check cash balance, store as variable
+buying_power = rs.profiles.load_account_profile(info="buying_power")
+print("buying_power: $" + buying_power)
+
+#check latest price of stock we interested in
+latest_price = rs.stocks.get_latest_price(stock_symbol)
+#add in some wiggle room, 2 cents
+wiggle_room_price = float(latest_price[0]) + 0.02
+
+#options date for WATT is always 3rd friday of the month
+#first find what today is
+now = datetime.now()
+#then find what the 3rd friday is of next month
+first_day_of_next_month = datetime(now.year, now.month + 1, 1)
+first_friday_of_next_month = first_day_of_next_month + timedelta(days=((4-calendar.monthrange(now.year,now.month+1)[0])+7)%7)
+third_friday_of_next_month = first_friday_of_next_month + timedelta(days=14)
+#convert date into YYYY-MM-DD format
+mday = "0"
+day = third_friday_of_next_month.day
+if day < 10:
+    mday = mday + str(day)
+else:
+    mday = str(day)
+
+m_month = "0"
+month = third_friday_of_next_month.month
+if month < 10:
+    m_month = m_month + str(month)
+else:
+    m_month = str(month)
+
+exp_date = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
+
+#if buying_power >= 100 * share price, i can sell a cash covered put
+#need to check if i already have sold one, possibility can afford to sell another one, but need to check and such
+#else amass more shares / moneys first
+if buying_power >= (100 * wiggle_room_price):
+    quantity = math.floor(buying_power / (100 * wiggle_room_price))
+    strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'strike_price')
+    prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'last_trade_price')
+    if dry_run:
+        print("Would have attempted to sell " + quantity + " cash covered put option(s) at a strike of " + strikes[0] + " for a profit of $" + prices[0] + " per contract.")
+    else:
+        ret = rs.orders.order_sell_option_limit("open", "credit", float(prices[0]), stock_symbol, quantity, exp_date, float(strikes[0]), 'put', 'gfd')
+
+        #send a text message to me with outcome, either how many bought or what went wrong if possible.
+        for item in ret:
+            print(item.items())
+
+        #if i order something i should probably then recheck how much buying power i have
+        buying_power = rs.profiles.load_account_profile(info="buying_power")
+
+
+#if current balance >= amount i want to buy each time period, should be auto depositing this amount or more per time period
+if int(buying_power[0]) >= amount_per_period:
+    #calculate how many shares can afford currently
+    shares_can_afford = math.floor(amount_per_period / wiggle_room_price)
+    if dry_run:
+        print("Would have tried to buy " + shares_can_afford + " " + stock_symbol + " at $" + wiggle_room_price + " per share or less.")
+    else:
+        #limit order - set to market price + a lil, during market hours, good for today, number of shares
+        ret = rs.orders.order_buy_limit(stock_symbol, shares_can_afford, wiggle_room_price, timeInForce="gfd")
+
+        #send a text message to me with outcome, either how many bought or what went wrong if possible.
+        for item in ret:
+            print(item.items())
+
+        #if i order something i should probably then recheck how much buying power i have
+        buying_power = rs.profiles.load_account_profile(info="buying_power")
+
+else:
+    #send a text message with a message saying i didnt have enough buying power to cover amount i want to invest per period
+    print("Did Not buy more shares. Current buying power is: $" + buying_power[0] + " , and current intended investment amount is: $" + str(amount_per_period))
+
+#check how many shares I have of the stock we working with
+#if i have >= 100 shares I can start selling covered calls
+print("number of WATT shares owned: ")
+num_shares_owned = rs.account.build_holdings()[stock_symbol]['quantity']
+print(num_shares_owned)
+
+if float(num_shares_owned) >= 100:
+    quantity = math.floor(num_shares_owned / 100)
+    #using the desired exp date and chance of profit range, we can find an option to sell. need to find a good strike and price for the option
+
+    strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'strike_price')
+    prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'last_trade_price')
+    if dry_run:
+        print("Would have tried to sell " + quantity + " covered call option expiring on " + exp_date + " with a strike price of $" + strikes[0] + " for an instant profit of $" + prices[0])
+    else:
+        #do order
+        ret = rs.orders.order_sell_option_limit("open", "credit", float(prices[0]), stock_symbol, quantity, exp_date, float(strikes[0]), 'call', 'gfd')
+
+        #send a text message to me with outcome, either how many bought or what went wrong if possible.
+        for item in ret:
+            print(item.items())
+
+else:
+    print("Not enough shares to sell a covered call.")
+
+
+
+# now = datetime.now()
+# first_day_of_month = datetime(now.year, now.month, 1)
+# first_friday = first_day_of_month + timedelta(days=((4-calendar.monthrange(now.year,now.month)[0])+7)%7)
+# # 4 is friday of week
+# third_friday = first_friday + timedelta(days=14)
+# print("third friday is:" + str(third_friday.month) + "/" + str(third_friday.day) + "/" + str(third_friday.year))
+
+# first_day_of_next_month = datetime(now.year, now.month + 1, 1)
+# first_friday_of_next_month = first_day_of_next_month + timedelta(days=((4-calendar.monthrange(now.year,now.month+1)[0])+7)%7)
+# third_friday_of_next_month = first_friday_of_next_month + timedelta(days=14)
+# print("third friday of next month is:" + str(third_friday_of_next_month.month) + "/" + str(third_friday_of_next_month.day) + "/" + str(third_friday_of_next_month.year))
+
+# mday = "0"
+# day = third_friday_of_next_month.day
+# if day < 10:
+#     mday = mday + str(day)
+# else:
+#     mday = str(day)
+
+# m_month = "0"
+# month = third_friday_of_next_month.month
+# if month < 10:
+#     m_month = m_month + str(month)
+# else:
+#     m_month = str(month)
+
+# expirationDate = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
+# print(expirationDate)
+# print("Options 0.75 < 0.80 % : ")
+# ret = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80)
+# for item in ret:
+#     print(item.items())
+
+# print("Strike price = ")
+# strike_prices = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'strike_price')
+# print(float(strike_prices[0]))
+# print(float(strike_prices[0]))
+
+
+# print("Last Trade price = ")
+# trade_prices = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'last_trade_price')
+# print(float(trade_prices[0]))
+# print(float(trade_prices[0]))
