@@ -11,7 +11,7 @@ dry_run = True
 #keep this variable the same as (or less than) the amount you are automatically transfering from bank to robinhood each period
 amount_per_period = 40
 stock_symbol = "WATT"
-
+log_filename = "logs/" + str(date.today()) + ".txt"
 #login to robinhood, only need to to totp once it seems, would need to add TOTP as third param to login.
 #totp = pyotp.TOTP(os.environ.get('TOTP')).now()
 login = rs.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
@@ -19,6 +19,9 @@ login = rs.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
 #check cash balance, store as variable
 buying_power = rs.profiles.load_account_profile(info="buying_power")
 print("buying_power: $" + buying_power)
+f = open(log_filename, "a")
+f.write("Starting buying power = $" + buying_power+ '\n')
+f.close()
 
 #check latest price of stock we interested in
 latest_price = rs.stocks.get_latest_price(stock_symbol)
@@ -52,8 +55,8 @@ exp_date = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
 #if buying_power >= 100 * share price, i can sell a cash covered put
 #need to check if i already have sold one, possibility can afford to sell another one, but need to check and such
 #else amass more shares / moneys first
-if float(buying_power[0]) >= (100 * wiggle_room_price):
-    quantity = math.floor(float(buying_power[0]) / (100 * wiggle_room_price))
+if float(buying_power) >= (100 * wiggle_room_price):
+    quantity = math.floor(float(buying_power) / (100 * wiggle_room_price))
     strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'strike_price')
     prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'last_trade_price')
     if dry_run:
@@ -70,7 +73,7 @@ if float(buying_power[0]) >= (100 * wiggle_room_price):
 
 
 #if current balance >= amount i want to buy each time period, should be auto depositing this amount or more per time period
-if float(buying_power[0]) >= amount_per_period:
+if float(buying_power) >= amount_per_period:
     #calculate how many shares can afford currently
     shares_can_afford = math.floor(amount_per_period / wiggle_room_price)
     if dry_run:
@@ -88,13 +91,19 @@ if float(buying_power[0]) >= amount_per_period:
 
 else:
     #send a text message with a message saying i didnt have enough buying power to cover amount i want to invest per period
-    print("Did Not buy more shares. Current buying power is: $" + buying_power[0] + " , and current intended investment amount is: $" + str(amount_per_period))
+    print("Did Not buy more shares. Current buying power is: $" + buying_power + " , and current requested investment amount is: $" + str(amount_per_period))
+    f = open(log_filename, "a")
+    f.write("Did not buy more shares. Current buying power is: $" + buying_power + " , and current requested investment amount is: $" + str(amount_per_period)+ '\n')
+    f.close()
 
 #check how many shares I have of the stock we working with
 #if i have >= 100 shares I can start selling covered calls
 print("number of WATT shares owned: ")
 num_shares_owned = rs.account.build_holdings()[stock_symbol]['quantity']
 print(num_shares_owned)
+f = open(log_filename, "a")
+f.write("Number of WATT shared currently owned: " + num_shares_owned+ '\n')
+f.close()
 
 if float(num_shares_owned) >= 100:
     quantity = math.floor(num_shares_owned / 100)
@@ -114,3 +123,15 @@ if float(num_shares_owned) >= 100:
 
 else:
     print("Not enough shares to sell a covered call.")
+    f = open(log_filename, "a")
+    f.write("Not enough shares to sell covered calls currently."+ '\n')
+    f.close()
+
+
+# if this script ran everyday at 7am or w/e for example, and then it created a file with what it did / didnt do. 
+# Was market open? What's my starting / ending balance after script is done doing stuff
+# Just log any actions it takes into a new file with todays date in a folder for reccord keeps.
+
+f = open(log_filename, "a")
+f.write("----------------------------------------------------------------------------"+ '\n\n')
+f.close()
