@@ -12,7 +12,7 @@ dry_run = True
 amount_per_period = 40
 stock_symbol = "WATT"
 
-#login to robinhood, only need to to totp once it seems
+#login to robinhood, only need to to totp once it seems, would need to add TOTP as third param to login.
 #totp = pyotp.TOTP(os.environ.get('TOTP')).now()
 login = rs.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
 
@@ -52,8 +52,8 @@ exp_date = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
 #if buying_power >= 100 * share price, i can sell a cash covered put
 #need to check if i already have sold one, possibility can afford to sell another one, but need to check and such
 #else amass more shares / moneys first
-if buying_power >= (100 * wiggle_room_price):
-    quantity = math.floor(buying_power / (100 * wiggle_room_price))
+if float(buying_power[0]) >= (100 * wiggle_room_price):
+    quantity = math.floor(float(buying_power[0]) / (100 * wiggle_room_price))
     strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'strike_price')
     prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'last_trade_price')
     if dry_run:
@@ -70,7 +70,7 @@ if buying_power >= (100 * wiggle_room_price):
 
 
 #if current balance >= amount i want to buy each time period, should be auto depositing this amount or more per time period
-if int(buying_power[0]) >= amount_per_period:
+if float(buying_power[0]) >= amount_per_period:
     #calculate how many shares can afford currently
     shares_can_afford = math.floor(amount_per_period / wiggle_room_price)
     if dry_run:
@@ -114,49 +114,3 @@ if float(num_shares_owned) >= 100:
 
 else:
     print("Not enough shares to sell a covered call.")
-
-
-
-# now = datetime.now()
-# first_day_of_month = datetime(now.year, now.month, 1)
-# first_friday = first_day_of_month + timedelta(days=((4-calendar.monthrange(now.year,now.month)[0])+7)%7)
-# # 4 is friday of week
-# third_friday = first_friday + timedelta(days=14)
-# print("third friday is:" + str(third_friday.month) + "/" + str(third_friday.day) + "/" + str(third_friday.year))
-
-# first_day_of_next_month = datetime(now.year, now.month + 1, 1)
-# first_friday_of_next_month = first_day_of_next_month + timedelta(days=((4-calendar.monthrange(now.year,now.month+1)[0])+7)%7)
-# third_friday_of_next_month = first_friday_of_next_month + timedelta(days=14)
-# print("third friday of next month is:" + str(third_friday_of_next_month.month) + "/" + str(third_friday_of_next_month.day) + "/" + str(third_friday_of_next_month.year))
-
-# mday = "0"
-# day = third_friday_of_next_month.day
-# if day < 10:
-#     mday = mday + str(day)
-# else:
-#     mday = str(day)
-
-# m_month = "0"
-# month = third_friday_of_next_month.month
-# if month < 10:
-#     m_month = m_month + str(month)
-# else:
-#     m_month = str(month)
-
-# expirationDate = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
-# print(expirationDate)
-# print("Options 0.75 < 0.80 % : ")
-# ret = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80)
-# for item in ret:
-#     print(item.items())
-
-# print("Strike price = ")
-# strike_prices = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'strike_price')
-# print(float(strike_prices[0]))
-# print(float(strike_prices[0]))
-
-
-# print("Last Trade price = ")
-# trade_prices = rs.options.find_options_by_specific_profitability(stock_symbol, expirationDate, None, 'call', 'chance_of_profit_short', 0.75, 0.80, 'last_trade_price')
-# print(float(trade_prices[0]))
-# print(float(trade_prices[0]))
