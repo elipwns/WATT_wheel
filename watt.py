@@ -55,10 +55,13 @@ exp_date = str(third_friday_of_next_month.year) + "-" + m_month + "-" + mday
 #if buying_power >= 100 * share price, i can sell a cash covered put
 #need to check if i already have sold one, possibility can afford to sell another one, but need to check and such
 #else amass more shares / moneys first
-if float(buying_power) >= (100 * wiggle_room_price):
+strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.68, 0.80, 'strike_price')
+print("Cost of 100 shares if assigned: $" + str(100 * float(strikes[0])))
+
+if float(buying_power) >= (100 * float(strikes[0])):
     quantity = math.floor(float(buying_power) / (100 * wiggle_room_price))
-    strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'strike_price')
-    prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'last_trade_price')
+    # strikes = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.70, 0.80, 'strike_price')
+    prices = rs.options.find_options_by_specific_profitability(stock_symbol, exp_date, None, 'put', 'chance_of_profit_short', 0.68, 0.80, 'last_trade_price')
     if dry_run:
         print("Would have attempted to sell " + quantity + " cash covered put option(s) at a strike of " + strikes[0] + " for a profit of $" + prices[0] + " per contract.")
     else:
@@ -70,7 +73,11 @@ if float(buying_power) >= (100 * wiggle_room_price):
 
         #if i order something i should probably then recheck how much buying power i have
         buying_power = rs.profiles.load_account_profile(info="buying_power")
-
+else:
+    print("Could not afford to sell a cash covered put.")
+    f = open(log_filename, "a")
+    f.write("Could not afford $" + (100 * float(strikes[0])) + " to sell a cash covered put. Current buying power is: $" + buying_power + '\n')
+    f.close()
 
 #if current balance >= amount i want to buy each time period, should be auto depositing this amount or more per time period
 if float(buying_power) >= amount_per_period:
